@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Environment variables - CRITICAL!
 .env
 .env.local
@@ -70,3 +71,6 @@ htmlcov/
 # Docker
 .dockerignore
 docker-compose.override.yml
+=======
+.env
+>>>>>>> d32d774 (file structure setup done and requirements installed)
