@@ -1,0 +1,45 @@
+# Main configuration file (NO SECRETS HERE - only structure)
+# All sensitive values come from .env
+
+app:
+  name: "Telegram AI Voice Assistant"
+  version: "1.0.0"
+  description: "AI-powered voice call assistant for Telegram"
+
+tdlib:
+  database_directory: "./data/tdlib/db"
+  files_directory: "./data/tdlib/files"
+  use_message_database: true
+  use_secret_chats: false
+  system_language_code: "en"
+  device_model: "AI Voice Assistant"
+  application_version: "1.0.0"
+  enable_storage_optimizer: true
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  frame_duration_ms: 20
+  codec: "opus"
+  
+  vad:  # Voice Activity Detection
+    aggressiveness: 2
+    frame_duration: 30
+    padding_duration: 300
+    
+call_settings:
+  answer_delay_seconds: 2
+  max_silence_duration: 3
+  end_call_after_silence: 10
+  
+features:
+  voice_activity_detection: true
+  noise_suppression: true
+  echo_cancellation: true
+  auto_gain_control: true
+  
+paths:
+  recordings: "./data/recordings"
+  transcripts: "./data/transcripts"
+  temp: "./data/temp"
+  logs: "./logs"

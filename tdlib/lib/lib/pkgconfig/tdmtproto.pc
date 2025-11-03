@@ -1,0 +1,10 @@
+prefix=/Users/aditiprasad/Desktop/telegram-ai-voice-assistant/tdlib/lib
+
+Name: tdmtproto
+Description: Telegram Library - MTProto implementation
+Version: 1.8.56
+
+CFlags: -I"${prefix}/include"
+Libs: -L"${prefix}/lib" -ltdmtproto
+Requires.private: tdactor tdnet tdutils
+Libs.private: -L"/opt/homebrew/lib" -l:libcrypto.dylib -L"/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib" -l:libz.tbd

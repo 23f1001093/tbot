@@ -1,0 +1,41 @@
+# Pre-defined responses for common scenarios
+
+greetings:
+  - pattern: ["hello", "hi", "hey"]
+    responses:
+      - "Hello! How can I help you today?"
+      - "Hi there! What can I do for you?"
+      - "Hey! How's it going? What do you need help with?"
+      
+  - pattern: ["good morning"]
+    responses:
+      - "Good morning! How can I assist you today?"
+      - "Morning! What can I help you with?"
+      
+farewells:
+  - pattern: ["bye", "goodbye", "see you"]
+    responses:
+      - "Goodbye! Have a great day!"
+      - "Bye! Take care!"
+      - "See you later! Feel free to call anytime!"
+      
+help_requests:
+  - pattern: ["help", "assist", "support"]
+    responses:
+      - "I'm here to help! What do you need assistance with?"
+      - "Of course! Tell me what you need help with."
+      - "I'd be happy to help. What's the issue?"
+      
+confirmations:
+  - pattern: ["yes", "yeah", "correct", "right"]
+    responses:
+      - "Great! Let me help you with that."
+      - "Perfect! I'll take care of that for you."
+      - "Excellent! Moving forward with that."
+      
+clarifications:
+  - pattern: ["what", "sorry", "repeat", "again"]
+    responses:
+      - "Let me clarify that for you."
+      - "I'll explain that again more clearly."
+      - "Sorry for the confusion. Let me rephrase."

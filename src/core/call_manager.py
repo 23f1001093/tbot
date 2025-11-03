@@ -1,193 +1,174 @@
 """
-Call management and audio processing
+Call Manager - Handles voice call logic
 """
+
+import os
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
-import numpy as np
+from collections import deque
+import yaml
+from dotenv import load_dotenv
 
-from ..ai.speech_to_text import SpeechToText
-from ..ai.text_to_speech import TextToSpeech
-from ..ai.llm_handler import LLMHandler
-from ..utils.audio_utils import AudioProcessor
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class CallManager:
     """
-    Manages voice calls and AI processing
+    Manages voice calls with AI processing
     """
     
-    def __init__(self, tdlib_client, config: Dict[str, Any]):
-        """
-        Initialize call manager
-        
-        Args:
-            tdlib_client: TDLib client instance
-            config: Configuration dictionary
-        """
+    def __init__(self, tdlib_client, ai_components: Dict):
+        """Initialize call manager"""
         self.tdlib = tdlib_client
-        self.config = config
+        self.stt = ai_components['stt']
+        self.tts = ai_components['tts']
+        self.llm = ai_components['llm']
         
-        # Initialize AI components
-        self.stt = SpeechToText(config['ai']['speech_to_text'])
-        self.tts = TextToSpeech(config['ai']['text_to_speech'])
-        self.llm = LLMHandler(config['ai'])
-        
-        # Audio processor
-        self.audio_processor = AudioProcessor(config['audio'])
+        # Load prompts
+        self.prompts = self._load_prompts()
         
         # Active calls
-        self.active_calls: Dict[int, Dict[str, Any]] = {}
+        self.active_calls: Dict[int, CallSession] = {}
+        
+        # Configuration from environment
+        self.config = {
+            'auto_answer': os.getenv('AUTO_ANSWER_CALLS', 'true').lower() == 'true',
+            'record_calls': os.getenv('RECORD_CALLS', 'true').lower() == 'true',
+            'max_duration': int(os.getenv('MAX_CALL_DURATION', '300')),
+            'answer_delay': 2
+        }
         
         # Register handlers
+        self.tdlib.register_handler('on_incoming_call', self.on_incoming_call)
         self.tdlib.register_handler('on_call_ready', self.on_call_ready)
         self.tdlib.register_handler('on_call_ended', self.on_call_ended)
         
+        logger.info("✅ Call Manager initialized")
+    
+    def _load_prompts(self) -> Dict:
+        """Load prompts from YAML"""
+        try:
+            with open('config/prompts.yaml', 'r') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Error loading prompts: {e}")
+            return {
+                'default': {
+                    'greeting': "Hello! How can I help you?",
+                    'goodbye': "Thank you for calling. Goodbye!",
+                    'error': "Sorry, I didn't understand that."
+                }
+            }
+    
+    async def on_incoming_call(self, call: Dict[str, Any]):
+        """Handle incoming call"""
+        call_id = call['id']
+        user_id = call.get('user_id')
+        
+        logger.info(f"📲 Incoming call {call_id} from user {user_id}")
+        
+        session = CallSession(call_id, user_id)
+        self.active_calls[call_id] = session
+        
+        if self.config['auto_answer']:
+            await asyncio.sleep(self.config['answer_delay'])
+            await self.tdlib.accept_call(call_id)
+            logger.info(f"✅ Auto-answered call {call_id}")
+    
     async def on_call_ready(self, call: Dict[str, Any]):
         """Handle call when connected"""
         call_id = call['id']
         
-        logger.info(f"Call {call_id} ready, starting AI processing")
+        if call_id not in self.active_calls:
+            self.active_calls[call_id] = CallSession(call_id, call.get('user_id'))
         
-        # Store call information
-        self.active_calls[call_id] = {
-            'id': call_id,
-            'start_time': datetime.utcnow(),
-            'user_id': call.get('user_id'),
-            'conversation': [],
-            'audio_buffer': [],
-            'processing': True
-        }
+        session = self.active_calls[call_id]
+        session.state = 'active'
+        session.connected_time = datetime.utcnow()
         
-        # Start audio processing
-        asyncio.create_task(self.process_call_audio(call_id))
+        logger.info(f"🎙️ Call {call_id} is active")
+        
+        # Start processing
+        session.tasks.append(
+            asyncio.create_task(self.process_call(call_id))
+        )
         
         # Send greeting
-        await self.send_greeting(call_id)
-        
-    async def process_call_audio(self, call_id: int):
-        """
-        Main audio processing loop for the call
-        """
-        call_info = self.active_calls.get(call_id)
-        if not call_info:
+        greeting = self.prompts.get('default', {}).get('greeting', "Hello!")
+        await self.send_voice_response(call_id, greeting)
+    
+    async def process_call(self, call_id: int):
+        """Main call processing loop"""
+        session = self.active_calls.get(call_id)
+        if not session:
             return
-            
-        logger.info(f"Starting audio processing for call {call_id}")
         
         try:
-            while call_info['processing']:
-                # Get audio from call (this would be from TDLib audio stream)
-                audio_chunk = await self.get_audio_chunk(call_id)
+            while session.state == 'active':
+                # Check max duration
+                if session.connected_time:
+                    duration = (datetime.utcnow() - session.connected_time).total_seconds()
+                    if duration > self.config['max_duration']:
+                        logger.info(f"Call {call_id} exceeded max duration")
+                        await self.tdlib.end_call(call_id, int(duration))
+                        break
                 
-                if audio_chunk:
-                    # Add to buffer
-                    call_info['audio_buffer'].append(audio_chunk)
-                    
-                    # Process when we have enough audio (e.g., 2 seconds)
-                    if len(call_info['audio_buffer']) >= 100:  # ~2 seconds
-                        await self.process_audio_buffer(call_id)
-                        
-                await asyncio.sleep(0.02)  # 20ms chunks
+                # Process audio (placeholder for actual implementation)
+                await asyncio.sleep(0.1)
                 
         except Exception as e:
-            logger.error(f"Error processing audio for call {call_id}: {e}")
-            
-    async def process_audio_buffer(self, call_id: int):
-        """Process accumulated audio buffer"""
-        call_info = self.active_calls.get(call_id)
-        if not call_info:
-            return
-            
+            logger.error(f"Error processing call {call_id}: {e}")
+    
+    async def send_voice_response(self, call_id: int, text: str):
+        """Send voice response to call"""
         try:
-            # Combine audio buffer
-            audio_data = np.concatenate(call_info['audio_buffer'])
-            call_info['audio_buffer'] = []
+            logger.info(f"🔊 Sending: {text[:50]}...")
             
-            # Speech to text
-            text = await self.stt.transcribe(audio_data)
+            # Convert to speech
+            audio_data = await self.tts.synthesize(text)
             
-            if text:
-                logger.info(f"User said: {text}")
-                
-                # Add to conversation
-                call_info['conversation'].append({
-                    'role': 'user',
-                    'content': text,
-                    'timestamp': datetime.utcnow()
-                })
-                
-                # Generate AI response
-                response = await self.llm.generate_response(
-                    text, 
-                    call_info['conversation']
-                )
-                
-                logger.info(f"AI response: {response}")
-                
-                # Add response to conversation
-                call_info['conversation'].append({
-                    'role': 'assistant',
-                    'content': response,
-                    'timestamp': datetime.utcnow()
-                })
-                
-                # Text to speech
-                audio_response = await self.tts.synthesize(response)
-                
-                # Send audio response to call
-                await self.send_audio_to_call(call_id, audio_response)
-                
+            # Send audio (placeholder - actual implementation needs WebRTC)
+            logger.info(f"📤 Audio sent to call {call_id}")
+            
         except Exception as e:
-            logger.error(f"Error processing audio buffer: {e}")
-            
-    async def send_greeting(self, call_id: int):
-        """Send initial greeting"""
-        greeting = "Hello! I'm your AI assistant. How can I help you today?"
-        
-        # Generate audio
-        audio = await self.tts.synthesize(greeting)
-        
-        # Send to call
-        await self.send_audio_to_call(call_id, audio)
-        
-    async def send_audio_to_call(self, call_id: int, audio_data: np.ndarray):
-        """Send audio data to the call"""
-        # This would integrate with TDLib's audio sending mechanism
-        # For now, this is a placeholder
-        logger.info(f"Sending audio to call {call_id}, size: {len(audio_data)}")
-        
-        # TODO: Implement actual audio sending through TDLib
-        pass
-        
-    async def get_audio_chunk(self, call_id: int) -> Optional[np.ndarray]:
-        """Get audio chunk from call"""
-        # This would get actual audio from TDLib
-        # For now, return None
-        return None
-        
+            logger.error(f"Error sending voice: {e}")
+    
     async def on_call_ended(self, call: Dict[str, Any]):
         """Handle call end"""
         call_id = call['id']
         
         if call_id in self.active_calls:
-            call_info = self.active_calls[call_id]
-            call_info['processing'] = False
+            session = self.active_calls[call_id]
+            session.state = 'ended'
+            session.end_time = datetime.utcnow()
+            
+            # Cancel tasks
+            for task in session.tasks:
+                if not task.done():
+                    task.cancel()
             
             # Calculate duration
-            duration = (datetime.utcnow() - call_info['start_time']).total_seconds()
-            
-            logger.info(f"Call {call_id} ended, duration: {duration:.1f}s")
-            
-            # Save transcript
-            await self.save_transcript(call_id, call_info['conversation'])
+            if session.connected_time and session.end_time:
+                duration = (session.end_time - session.connected_time).total_seconds()
+                logger.info(f"📵 Call {call_id} ended. Duration: {duration:.1f}s")
             
             # Cleanup
             del self.active_calls[call_id]
-            
-    async def save_transcript(self, call_id: int, conversation: list):
-        """Save call transcript"""
-        # TODO: Implement transcript saving
-        logger.info(f"Saving transcript for call {call_id}")
+
+
+class CallSession:
+    """Represents an active call session"""
+    
+    def __init__(self, call_id: int, user_id: Optional[int] = None):
+        self.call_id = call_id
+        self.user_id = user_id
+        self.state = 'pending'
+        self.start_time = datetime.utcnow()
+        self.connected_time: Optional[datetime] = None
+        self.end_time: Optional[datetime] = None
+        self.conversation_history: List[Dict] = []
+        self.audio_buffer = deque(maxlen=200)
+        self.tasks: List[asyncio.Task] = []

@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  voice-assistant:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: telegram-voice-assistant
+    restart: unless-stopped
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+    volumes:
+      # Mount .env file
+      - ../.env:/app/.env:ro
+      
+      # Persistent data
+      - voice-data:/app/data
+      - voice-logs:/app/logs
+      
+      # TDLib session
+      - tdlib-data:/app/tdlib/db
+      
+    networks:
+      - voice-network
+      
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: voice-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - voice-network
+    command: redis-server --appendonly yes
+    
+  # Optional: Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: voice-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - voice-network
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+volumes:
+  voice-data:
+    driver: local
+  voice-logs:
+    driver: local
+  tdlib-data:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+networks:
+  voice-network:
+    driver: bridge
