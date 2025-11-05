@@ -1,6 +1,5 @@
-intro
-A revolutionary AI voice assistant that can have intelligent conversations through Telegram Desktop calls. It remembers you, learns from conversations, and gets smarter over time.
-📞 How Telegram AI Voice Assistant Works
+
+## A revolutionary AI voice assistant that can have intelligent conversations through Telegram Desktop calls. It remembers you, learns from conversations, and gets smarter over time.
 
 ## ✨ Key Features
 
